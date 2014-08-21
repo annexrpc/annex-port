@@ -1,0 +1,11 @@
+{application, annex_port, [
+  {description, "port backend for annex"},
+  {vsn, "0.1.0"},
+  {modules, []},
+  {registered, []},
+  {applications, [
+    kernel,
+    stdlib
+  ]},
+  {env, []}
+]}.
