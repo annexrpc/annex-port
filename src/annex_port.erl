@@ -43,7 +43,9 @@ init([Opts]) ->
   process_flag(trap_exit, true),
   Port = open_port({spawn, fast_key:get(command, Opts)}, [
     binary,
-    nouse_stdio
+    nouse_stdio,
+    stream,
+    exit_status
   ]),
   Marshal = fast_key:get(marshal, Opts),
   QueueLength = fast_key:get(queue_length, Opts, 1000),
@@ -87,17 +89,11 @@ handle_cast(Msg, State) ->
   {noreply, State}.
 
 handle_info({Port, {data, Data}}, State = #state{port = Port}) ->
-  Requests = State#state.requests,
   case catch (State#state.marshal):decode(Data) of
     {ok, MsgID, Res} ->
-      case fast_key:get(MsgID, Requests) of
-        {Sender, Ref} ->
-          Sender ! {Ref, Res},
-          {noreply, State#state{requests = fast_key:remove(MsgID, Requests)}};
-        _ ->
-          error_logger:error_msg("Message id not found: ~p~nMessage was ~p~n", [MsgID, Res]),
-          {noreply, State}
-      end;
+      reply(MsgID, {ok, Res}, State);
+    {error, MsgID, Res} ->
+      reply(MsgID, {error, Res}, State);
     Error ->
       error_logger:error_msg("Unable to decode response ~p~n~p~n", [Data, Error]),
       {noreply, State}
@@ -114,3 +110,14 @@ terminate(_Reason, #state{port = Port}) ->
 
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
+
+reply(MsgID, Res, State) ->
+  Requests = State#state.requests,
+  case fast_key:get(MsgID, Requests) of
+    {Sender, Ref} ->
+      Sender ! {Ref, Res},
+      {noreply, State#state{requests = fast_key:remove(MsgID, Requests)}};
+    _ ->
+      error_logger:error_msg("Message id not found: ~p~nMessage was ~p~n", [MsgID, Res]),
+      {noreply, State}
+  end.
